@@ -63,7 +63,12 @@ pub fn compute_workspace_hash(dir: &Path) -> anyhow::Result<WorkspaceHash> {
 
     let mut hasher = blake3::Hasher::new();
     for entry in &entries {
+        hasher.update(entry.path.as_bytes());
+        hasher.update(&[0]);
         hasher.update(entry.hash.as_bytes());
+        hasher.update(&[0]);
+        hasher.update(entry.size.to_string().as_bytes());
+        hasher.update(&[0]);
     }
 
     Ok(WorkspaceHash {
@@ -120,6 +125,22 @@ mod tests {
 
         let hash_a = compute_workspace_hash(&dir_a).expect("hash a");
         let hash_b = compute_workspace_hash(&dir_b).expect("hash b");
+        assert_ne!(hash_a.total_hash, hash_b.total_hash);
+
+        fs::remove_dir_all(dir_a).expect("cleanup dir a");
+        fs::remove_dir_all(dir_b).expect("cleanup dir b");
+    }
+
+    #[test]
+    fn renamed_files_produce_different_hashes() {
+        let dir_a = test_dir("renamed-a");
+        let dir_b = test_dir("renamed-b");
+        fs::write(dir_a.join("file-a.txt"), "same content").expect("write file a");
+        fs::write(dir_b.join("file-b.txt"), "same content").expect("write file b");
+
+        let hash_a = compute_workspace_hash(&dir_a).expect("hash a");
+        let hash_b = compute_workspace_hash(&dir_b).expect("hash b");
+
         assert_ne!(hash_a.total_hash, hash_b.total_hash);
 
         fs::remove_dir_all(dir_a).expect("cleanup dir a");

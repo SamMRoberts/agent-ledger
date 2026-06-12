@@ -12,7 +12,7 @@ use agent_ledger_runner::{git, process::ProcessRunner};
 use chrono::Utc;
 use serde_json::json;
 
-use super::{event_log_path, ledger_dir, load_manifest_or_default, session_db_path, session_key_path, session_manifest_path, sessions_dir, write_session_manifest, SessionManifestFile};
+use super::{capture_git_diff, event_log_path, ledger_dir, load_manifest_or_default, session_db_path, session_key_path, session_manifest_path, sessions_dir, write_session_manifest, EvidenceCapture, SessionManifestFile};
 
 pub async fn run(agent: String) -> anyhow::Result<()> {
     let manifest = load_manifest_or_default()?;
@@ -25,6 +25,8 @@ pub async fn run(agent: String) -> anyhow::Result<()> {
     if !detection.found {
         anyhow::bail!("agent '{}' is not available in PATH", agent)
     }
+    let spec = adapter.launch_command(Path::new("."))?;
+    let evidence_capture = EvidenceCapture::from_command_spec(&spec);
 
     let session_id = SessionId::new();
     let session_dir = sessions_dir().join(&session_id.0);
@@ -58,6 +60,7 @@ pub async fn run(agent: String) -> anyhow::Result<()> {
         session: session.clone(),
         challenge_manifest: manifest.clone(),
         public_key_hex: key.public_key_hex(),
+        evidence_capture: evidence_capture.clone(),
     };
     write_session_manifest(&session_manifest_path(&session_dir), &session_manifest_file)?;
     key.save_to_file(&session_key_path(&session_dir))?;
@@ -70,24 +73,24 @@ pub async fn run(agent: String) -> anyhow::Result<()> {
             "agent": agent,
             "manifest_id": manifest.id,
             "baseline_commit": baseline_commit,
+            "terminal_io_capture": evidence_capture.terminal_io,
+            "capture_notes": evidence_capture.notes,
         }),
     )?;
     event_log.append(
         EventType::WorkspaceHashSnapshot,
         serde_json::to_value(&baseline_workspace_hash)?,
     )?;
-    if git::is_git_repo(&workspace_dir) {
-        event_log.append(
-            EventType::GitDiffSnapshot,
-            json!({
-                "diff": git::get_diff(&workspace_dir).unwrap_or_default(),
-            }),
-        )?;
+    let baseline_diff = capture_git_diff(&workspace_dir);
+    if let Some(payload) = baseline_diff.warning_payload("start") {
+        event_log.append(EventType::Warning, payload)?;
+    }
+    if baseline_diff.file_contents().is_some() {
+        event_log.append(EventType::GitDiffSnapshot, baseline_diff.event_payload())?;
     }
 
     let event_log = Arc::new(Mutex::new(event_log));
     let runner = ProcessRunner::new(session.id.to_string(), Arc::clone(&event_log));
-    let spec = adapter.launch_command(Path::new("."))?;
     let exit_code = runner.run_agent(&spec, &workspace_dir).await?;
 
     let final_workspace_hash = compute_workspace_hash(&workspace_dir)?;
@@ -127,6 +130,7 @@ pub async fn run(agent: String) -> anyhow::Result<()> {
             session,
             challenge_manifest: manifest,
             public_key_hex: key.public_key_hex(),
+            evidence_capture,
         },
     )?;
 

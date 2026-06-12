@@ -21,15 +21,17 @@ It wraps a coding agent CLI session and produces a **signed, tamper-evident evid
 
 | Claim | Supported |
 |-------|-----------|
-| What happened **inside** the session | ✅ |
+| What happened **inside** the session | ⚠️ Partial for interactive sessions |
 | What files changed during the session | ✅ |
-| What commands ran inside the agent | ✅ |
-| What the agent printed | ✅ |
+| What commands ran inside the agent | ⚠️ Depends on launch mode |
+| What the agent printed | ⚠️ Captured for non-interactive launches only |
 | What token reports were captured | ✅ |
 | Whether the final workspace matches the recorded session hash | ✅ |
 | That **no work occurred outside** the wrapper | ❌ (requires controlled environment) |
 
 > **Integrity limit**: `agent-ledger` v0.1 operates at **Level 1 (Local Evidence)**. It cannot prove exclusivity unless run inside a controlled environment (Docker/devcontainer). Remote-hosted challenge environments (Level 2/3) are planned for future releases.
+>
+> **Capture limit**: interactive agents that inherit the user's terminal currently record lifecycle and snapshot evidence, but not per-line stdin/stdout/stderr. Non-interactive agents capture stdout/stderr line-by-line.
 
 ---
 
@@ -149,9 +151,23 @@ This command:
 3. Generates an ed25519 signing keypair
 4. Captures the baseline workspace hash and git commit
 5. Writes a `session_started` event to the event log
-6. Launches the agent CLI with captured I/O
-7. Records all stdout/stderr events to the event log
+6. Launches the agent CLI and records its capture mode in the session manifest
+7. Records stdout/stderr line events only for non-interactive launches; interactive launches inherit the terminal and record reduced capture guarantees explicitly
 8. On exit: captures final workspace hash, writes `session_finished` event
+
+**Capture modes**
+
+- Non-interactive agents: stdout/stderr are captured line-by-line in the event log.
+- Interactive agents: stdio is inherited from the terminal, so session lifecycle and snapshot evidence are recorded, but terminal I/O is not replayable from the bundle.
+
+```mermaid
+flowchart TD
+    A[agent-ledger start] --> B{Launch mode}
+    B -->|Non-interactive| C[Capture stdout/stderr line-by-line]
+    B -->|Interactive| D[Inherit terminal stdio]
+    C --> E[Record session events + snapshots]
+    D --> F[Record session lifecycle + snapshots + reduced capture note]
+```
 
 **Session directory layout:**
 

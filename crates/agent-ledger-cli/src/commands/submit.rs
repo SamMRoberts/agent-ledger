@@ -7,13 +7,12 @@ use agent_ledger_core::{
     storage::Storage,
     workspace::compute_workspace_hash,
 };
-use agent_ledger_runner::git;
 use chrono::Utc;
 use flate2::{write::GzEncoder, Compression};
 use serde_json::json;
 use tar::Builder;
 
-use super::{active_or_latest_session_dir, event_log_path, load_events, read_session_manifest, session_db_path, session_key_path, session_manifest_path, write_session_manifest};
+use super::{active_or_latest_session_dir, capture_git_diff, event_log_path, load_events, read_session_manifest, session_db_path, session_key_path, session_manifest_path, write_session_manifest};
 
 pub async fn run() -> anyhow::Result<()> {
     let session_dir = active_or_latest_session_dir()?.ok_or_else(|| anyhow::anyhow!("no sessions found"))?;
@@ -34,13 +33,11 @@ pub async fn run() -> anyhow::Result<()> {
 
     let workspace_hash_path = final_dir.join("workspace_hash.json");
     fs::write(&workspace_hash_path, workspace_hash.to_json()?)?;
-    let diff = if git::is_git_repo(&workspace_dir) {
-        git::get_diff(&workspace_dir).unwrap_or_default()
-    } else {
-        String::new()
-    };
     let diff_path = final_dir.join("final.diff");
-    fs::write(&diff_path, &diff)?;
+    let diff_capture = capture_git_diff(&workspace_dir);
+    if let Some(diff_contents) = diff_capture.file_contents() {
+        fs::write(&diff_path, diff_contents)?;
+    }
 
     let mut event_log = EventLog::new(&event_log_path(&session_dir), session_manifest.session.id.clone())?;
     event_log.append(
@@ -48,8 +45,15 @@ pub async fn run() -> anyhow::Result<()> {
         json!({
             "bundle_path": "final/submission.tar.gz",
             "final_workspace_hash": session_manifest.session.final_workspace_hash,
+            "git_diff_captured": diff_capture.captured(),
         }),
     )?;
+    if let Some(payload) = diff_capture.warning_payload("submit") {
+        event_log.append(EventType::Warning, payload)?;
+    }
+    if diff_capture.file_contents().is_some() {
+        event_log.append(EventType::GitDiffSnapshot, diff_capture.event_payload())?;
+    }
 
     let events = load_events(&event_log_path(&session_dir))?;
     let events_hash = events.last().map(|event| event.event_hash.clone()).unwrap_or_else(|| "genesis".into());
