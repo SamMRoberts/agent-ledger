@@ -1,0 +1,27 @@
+[package]
+name = "agent-ledger-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "agent-ledger"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+chrono.workspace = true
+flate2.workspace = true
+tar.workspace = true
+hex.workspace = true
+blake3.workspace = true
+ed25519-dalek.workspace = true
+agent-ledger-core.workspace = true
+agent-ledger-agents.workspace = true
+agent-ledger-runner.workspace = true
