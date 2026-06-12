@@ -81,9 +81,9 @@ impl EvidenceCapture {
     pub(crate) fn from_command_spec(spec: &CommandSpec) -> Self {
         if spec.interactive {
             Self {
-                terminal_io: "interactive_stdio_inherited".into(),
+                terminal_io: "interactive_pty_transcript".into(),
                 notes: vec![
-                    "The agent inherited the user's terminal stdio; agent-ledger records session lifecycle and snapshot evidence, but not per-line stdin/stdout/stderr for this session.".into(),
+                    "The agent inherited terminal interaction through a PTY transcript capture path. agent-ledger records lifecycle and snapshots, and stores replayed stdout transcript lines when capture is available.".into(),
                 ],
             }
         } else {
@@ -243,7 +243,7 @@ mod tests {
 
         let capture = EvidenceCapture::from_command_spec(&spec);
 
-        assert_eq!(capture.terminal_io, "interactive_stdio_inherited");
+        assert_eq!(capture.terminal_io, "interactive_pty_transcript");
         assert!(!capture.notes.is_empty());
     }
 
