@@ -6,3 +6,4 @@ pub mod signing;
 pub mod workspace;
 pub mod storage;
 pub mod scoring;
+pub mod status;

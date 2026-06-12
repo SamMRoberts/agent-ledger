@@ -1,0 +1,18 @@
+[package]
+name = "agent-ledger-menubar"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "agent-ledger-menubar"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+agent-ledger-core.workspace = true
+chrono.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+tao = "0.28"
+tray-icon = "0.24"

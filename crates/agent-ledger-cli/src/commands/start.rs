@@ -12,7 +12,7 @@ use agent_ledger_runner::{git, process::ProcessRunner};
 use chrono::Utc;
 use serde_json::json;
 
-use super::{capture_git_diff, event_log_path, ledger_dir, load_manifest_or_default, session_db_path, session_key_path, session_manifest_path, sessions_dir, write_session_manifest, EvidenceCapture, SessionManifestFile};
+use super::{capture_git_diff, event_log_path, evidence_capture_from_command_spec, ledger_dir, load_manifest_or_default, session_db_path, session_key_path, session_manifest_path, sessions_dir, write_session_manifest, SessionManifestFile};
 
 fn append_derived_agent_events(
     adapter: &dyn AgentAdapter,
@@ -65,7 +65,7 @@ pub async fn run(agent: String) -> anyhow::Result<()> {
         anyhow::bail!("agent '{}' is not available in PATH", agent)
     }
     let spec = adapter.launch_command(Path::new("."))?;
-    let evidence_capture = EvidenceCapture::from_command_spec(&spec);
+    let evidence_capture = evidence_capture_from_command_spec(&spec);
 
     let session_id = SessionId::new();
     let session_dir = sessions_dir().join(&session_id.0);

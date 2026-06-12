@@ -6,40 +6,52 @@ pub mod status;
 pub mod submit;
 pub mod verify;
 
-use std::{fs, path::{Path, PathBuf}};
+use std::{path::Path, path::PathBuf};
 
 use agent_ledger_agents::CommandSpec;
 use agent_ledger_core::{
-    event::{Event, EventLog, EventType},
+    event::Event,
     manifest::ChallengeManifest,
-    session::{Session, SessionStatus},
+    status::{
+        active_or_latest_session_dir as core_active_or_latest_session_dir,
+        event_log_path as         core_event_log_path,
+        ledger_dir as core_ledger_dir,
+        load_events as core_load_events,
+        read_session_manifest as core_read_session_manifest,
+        session_db_path as core_session_db_path,
+        session_key_path as core_session_key_path,
+        session_manifest_path as core_session_manifest_path,
+        sessions_dir as core_sessions_dir,
+        write_session_manifest as core_write_session_manifest,
+        EvidenceCapture,
+        SessionManifestFile,
+    },
 };
-use anyhow::{anyhow, Result};
-use serde::{Deserialize, Serialize};
+use anyhow::Result;
 use serde_json::json;
 
 pub(crate) fn ledger_dir() -> PathBuf {
-    PathBuf::from(".ledger")
+    core_ledger_dir(Path::new("."))
 }
 
 pub(crate) fn sessions_dir() -> PathBuf {
-    ledger_dir().join("sessions")
+    core_sessions_dir(Path::new("."))
 }
 
 pub(crate) fn session_db_path(session_dir: &Path) -> PathBuf {
-    session_dir.join("session.db")
+    core_session_db_path(session_dir)
 }
 
 pub(crate) fn event_log_path(session_dir: &Path) -> PathBuf {
-    session_dir.join("events.jsonl")
+    core_event_log_path(session_dir)
 }
 
 pub(crate) fn session_manifest_path(session_dir: &Path) -> PathBuf {
-    session_dir.join("session_manifest.json")
+    core_session_manifest_path(session_dir)
 }
 
 pub(crate) fn session_key_path(session_dir: &Path) -> PathBuf {
-    session_dir.join("session.key")
+    core_session_key_path(session_dir)
 }
 
 pub(crate) fn load_manifest_or_default() -> Result<ChallengeManifest> {
@@ -53,46 +65,20 @@ pub(crate) fn load_manifest_or_default() -> Result<ChallengeManifest> {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct SessionManifestFile {
-    pub session: Session,
-    pub challenge_manifest: ChallengeManifest,
-    pub public_key_hex: String,
-    #[serde(default)]
-    pub evidence_capture: EvidenceCapture,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub(crate) struct EvidenceCapture {
-    pub terminal_io: String,
-    pub notes: Vec<String>,
-}
-
-impl Default for EvidenceCapture {
-    fn default() -> Self {
-        Self {
-            terminal_io: "unspecified".into(),
-            notes: Vec::new(),
+pub(crate) fn evidence_capture_from_command_spec(spec: &CommandSpec) -> EvidenceCapture {
+    if spec.interactive {
+        EvidenceCapture {
+            terminal_io: "interactive_pty_transcript".into(),
+            notes: vec![
+                "The agent inherited terminal interaction through a PTY transcript capture path. agent-ledger records lifecycle and snapshots, and stores replayed stdout transcript lines when capture is available.".into(),
+            ],
         }
-    }
-}
-
-impl EvidenceCapture {
-    pub(crate) fn from_command_spec(spec: &CommandSpec) -> Self {
-        if spec.interactive {
-            Self {
-                terminal_io: "interactive_pty_transcript".into(),
-                notes: vec![
-                    "The agent inherited terminal interaction through a PTY transcript capture path. agent-ledger records lifecycle and snapshots, and stores replayed stdout transcript lines when capture is available.".into(),
-                ],
-            }
-        } else {
-            Self {
-                terminal_io: "captured_stdout_stderr".into(),
-                notes: vec![
-                    "The agent process stdout and stderr were captured line-by-line by agent-ledger. stdin was not recorded.".into(),
-                ],
-            }
+    } else {
+        EvidenceCapture {
+            terminal_io: "captured_stdout_stderr".into(),
+            notes: vec![
+                "The agent process stdout and stderr were captured line-by-line by agent-ledger. stdin was not recorded.".into(),
+            ],
         }
     }
 }
@@ -168,64 +154,20 @@ pub(crate) fn capture_git_diff(repo_dir: &Path) -> GitDiffCapture {
     }
 }
 
-pub(crate) fn write_session_manifest(path: &Path, manifest: &SessionManifestFile) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(path, serde_json::to_vec_pretty(manifest)?)?;
-    Ok(())
-}
-
 pub(crate) fn read_session_manifest(path: &Path) -> Result<SessionManifestFile> {
-    Ok(serde_json::from_slice(&fs::read(path)?)?)
+    core_read_session_manifest(path)
 }
 
-pub(crate) fn list_session_dirs() -> Result<Vec<PathBuf>> {
-    let base = sessions_dir();
-    if !base.exists() {
-        return Ok(Vec::new());
-    }
-    let mut dirs = fs::read_dir(base)?
-        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
-        .filter(|path| path.is_dir())
-        .collect::<Vec<_>>();
-    dirs.sort();
-    Ok(dirs)
+pub(crate) fn write_session_manifest(path: &Path, manifest: &SessionManifestFile) -> Result<()> {
+    core_write_session_manifest(path, manifest)
 }
 
 pub(crate) fn active_or_latest_session_dir() -> Result<Option<PathBuf>> {
-    let dirs = list_session_dirs()?;
-    for dir in dirs.iter().rev() {
-        let manifest_path = session_manifest_path(dir);
-        if manifest_path.exists() {
-            let manifest = read_session_manifest(&manifest_path)?;
-            if manifest.session.status == SessionStatus::Active {
-                return Ok(Some(dir.clone()));
-            }
-        }
-    }
-    Ok(dirs.into_iter().last())
-}
-
-pub(crate) fn latest_workspace_hash(events: &[Event]) -> Option<String> {
-    events.iter().rev().find_map(|event| {
-        if event.event_type == EventType::WorkspaceHashSnapshot {
-            event.payload.get("total_hash")?.as_str().map(ToOwned::to_owned)
-        } else {
-            None
-        }
-    })
+    core_active_or_latest_session_dir(Path::new("."))
 }
 
 pub(crate) fn load_events(path: &Path) -> Result<Vec<Event>> {
-    EventLog::load_all(path)
-}
-
-pub(crate) fn required_file<'a>(files: &'a std::collections::HashMap<String, Vec<u8>>, name: &str) -> Result<&'a [u8]> {
-    files
-        .get(name)
-        .map(Vec::as_slice)
-        .ok_or_else(|| anyhow!("missing required bundle file: {name}"))
+    core_load_events(path)
 }
 
 #[cfg(test)]
@@ -241,7 +183,7 @@ mod tests {
             interactive: true,
         };
 
-        let capture = EvidenceCapture::from_command_spec(&spec);
+        let capture = evidence_capture_from_command_spec(&spec);
 
         assert_eq!(capture.terminal_io, "interactive_pty_transcript");
         assert!(!capture.notes.is_empty());

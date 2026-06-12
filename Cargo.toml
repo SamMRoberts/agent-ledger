@@ -4,6 +4,7 @@ members = [
     "crates/agent-ledger-core",
     "crates/agent-ledger-agents",
     "crates/agent-ledger-runner",
+    "crates/agent-ledger-menubar",
 ]
 resolver = "2"
 

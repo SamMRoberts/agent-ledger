@@ -4,14 +4,13 @@ use agent_ledger_core::{
     event::Event,
     hash_chain::verify_chain,
     signing::verify_signature,
+    status::{required_file, SessionManifestFile},
     workspace::WorkspaceHash,
 };
 use anyhow::anyhow;
 use ed25519_dalek::VerifyingKey;
 use flate2::read::GzDecoder;
 use tar::Archive;
-
-use super::{required_file, SessionManifestFile};
 
 fn load_events_from_bytes(bytes: &[u8]) -> anyhow::Result<Vec<Event>> {
     let content = std::str::from_utf8(bytes)?;

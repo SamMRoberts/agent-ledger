@@ -75,6 +75,9 @@ agent-ledger snapshot
 # Check session status
 agent-ledger status
 
+# On macOS: launch the menubar status companion
+cargo run -p agent-ledger-menubar -- --root .
+
 # Create a signed submission bundle
 agent-ledger submit
 
@@ -207,6 +210,21 @@ Events:    284
 Workspace: abc123...
 Chain:     valid
 ```
+
+### `agent-ledger-menubar` (macOS only)
+
+Launches a macOS menubar companion that polls the current workspace and shows the active or most recent session state in the menu bar.
+
+```bash
+$ cargo run -p agent-ledger-menubar -- --root .
+```
+
+Flags:
+
+- `--root <path>`: workspace root to monitor (defaults to current directory)
+- `--refresh-seconds <n>`: polling interval in seconds (defaults to `2`)
+
+The menubar item is read-only in v0.1. It reuses the same session manifest and event log data as `agent-ledger status`, updates its title/icon as sessions change, and provides menu actions to refresh or open the current session folder.
 
 ### `agent-ledger submit`
 
@@ -375,6 +393,7 @@ agent-ledger/
     agent-ledger-core/            # Core data models and verification logic
       src/
         session.rs                # Session model
+        status.rs                 # Shared session artifact + status summary helpers
         manifest.rs               # Challenge manifest (YAML)
         event.rs                  # Event log writer
         hash_chain.rs             # Hash chain verification
@@ -394,6 +413,11 @@ agent-ledger/
         process.rs                # Process runner with I/O capture
         file_watcher.rs           # Filesystem watcher (notify)
         git.rs                    # Git shell-out helpers
+    agent-ledger-menubar/         # macOS menubar companion binary
+      src/
+        main.rs
+        macos.rs
+        presentation.rs
 ```
 
 ---
@@ -421,6 +445,7 @@ cargo clippy
 - PTY support is pipe-based in v0.1; full pseudo-terminal wrapping (with terminal resizing) requires `portable-pty` and is planned.
 - Token tracking is a placeholder estimator; real tokenization per agent is a future enhancement.
 - File watching integration during `start` is architecture-ready but not yet wired into the event log in v0.1.
+- The menubar companion is macOS-only in v0.1 and uses polling rather than live filesystem watch updates.
 - Level 1 integrity cannot prove that no work occurred outside the wrapper; use a controlled environment for stronger guarantees.
 - Submission bundles do not yet include a full workspace archive (planned: `.tar.zst` of workspace files).
 
