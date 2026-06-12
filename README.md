@@ -65,6 +65,7 @@ agent-ledger init
 
 # Start a session with Copilot CLI
 agent-ledger start --agent copilot
+# Copilot runs inside an agent-ledger terminal frame with periodic status lines.
 
 # Start a session with Codex CLI  
 agent-ledger start --agent codex
@@ -452,7 +453,7 @@ cargo clippy
 
 ## Known Limitations
 
-- PTY support is pipe-based in v0.1; full pseudo-terminal wrapping (with terminal resizing) requires `portable-pty` and is planned.
+- Interactive Copilot sessions use the terminal through `script` and an agent-ledger frame; full terminal resizing support is still planned.
 - Token tracking is a placeholder estimator; real tokenization per agent is a future enhancement.
 - File watching integration during `start` is architecture-ready but not yet wired into the event log in v0.1.
 - The menubar companion is macOS-only in v0.1 and uses polling rather than live filesystem watch updates.

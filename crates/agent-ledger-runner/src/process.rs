@@ -335,18 +335,25 @@ impl ProcessRunner {
         done: Arc<AtomicBool>,
     ) -> anyhow::Result<()> {
         let started = Instant::now();
+        let mut next_status_at = INTERACTIVE_STATUS_INTERVAL;
         loop {
             if done.load(Ordering::SeqCst) {
                 break;
             }
 
-            tokio::time::sleep(INTERACTIVE_STATUS_INTERVAL).await;
+            tokio::time::sleep(Duration::from_secs(1)).await;
             if done.load(Ordering::SeqCst) {
                 break;
             }
 
+            let elapsed = started.elapsed();
+            if elapsed < next_status_at {
+                continue;
+            }
+            next_status_at += INTERACTIVE_STATUS_INTERVAL;
+
             let width = Self::terminal_width();
-            let elapsed_seconds = started.elapsed().as_secs();
+            let elapsed_seconds = elapsed.as_secs();
             let status = Self::frame_line(
                 width,
                 &format!(
