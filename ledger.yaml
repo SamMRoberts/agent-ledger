@@ -1,0 +1,19 @@
+id: todo-app-2026-06
+name: Todo App Challenge
+baseline_repo: https://github.com/example/todo-challenge
+allowed_agents:
+- copilot
+- codex
+time_limit_minutes: 120
+workspace:
+  mode: local
+network:
+  mode: unrestricted
+commands:
+  install: npm install
+  test: npm test
+  build: npm run build
+scoring:
+  public_tests_weight: 40
+  hidden_tests_weight: 40
+  token_efficiency_weight: 20
