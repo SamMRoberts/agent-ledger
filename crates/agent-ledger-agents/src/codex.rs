@@ -27,6 +27,7 @@ impl AgentAdapter for CodexAdapter {
             program: "codex".into(),
             args: Vec::new(),
             env: HashMap::new(),
+            interactive: false,
         })
     }
 

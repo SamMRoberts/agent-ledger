@@ -25,8 +25,13 @@ impl ProcessRunner {
                     "session_id": self.session_id,
                     "program": spec.program,
                     "args": spec.args,
+                    "interactive": spec.interactive,
                 }),
             )?;
+        }
+
+        if spec.interactive {
+            return self.run_interactive(spec, workspace_dir).await;
         }
 
         let mut command = tokio::process::Command::new(&spec.program);
@@ -74,6 +79,39 @@ impl ProcessRunner {
         if let Some(task) = stderr_task {
             task.await??;
         }
+
+        {
+            let mut log = self.event_log.lock().map_err(|_| anyhow!("event log mutex poisoned"))?;
+            log.append(
+                EventType::AgentStopped,
+                json!({
+                    "exit_code": status.code(),
+                    "success": status.success(),
+                }),
+            )?;
+        }
+
+        Ok(status.code().unwrap_or_default())
+    }
+
+    /// Run the agent with stdio inherited from the parent process so the user
+    /// can interact with it directly in their terminal. Session start/stop
+    /// events are still logged; per-line I/O events are not captured.
+    async fn run_interactive(&self, spec: &CommandSpec, workspace_dir: &Path) -> anyhow::Result<i32> {
+        let mut command = tokio::process::Command::new(&spec.program);
+        command
+            .args(&spec.args)
+            .current_dir(workspace_dir)
+            .stdin(Stdio::inherit())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .envs(&spec.env);
+
+        let mut child = command
+            .spawn()
+            .with_context(|| format!("spawning interactive agent process {}", spec.program))?;
+
+        let status = child.wait().await?;
 
         {
             let mut log = self.event_log.lock().map_err(|_| anyhow!("event log mutex poisoned"))?;

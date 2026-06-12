@@ -27,6 +27,7 @@ impl AgentAdapter for ClaudeAdapter {
             program: "claude".into(),
             args: Vec::new(),
             env: HashMap::new(),
+            interactive: false,
         })
     }
 

@@ -12,18 +12,12 @@ impl AgentAdapter for CopilotAdapter {
     }
 
     fn detect(&self) -> anyhow::Result<AgentDetection> {
-        let path = binary_in_path("gh");
-        let version = version_string("gh", &["--version"]);
-        let mut notes = Vec::new();
-        if let Some(extension_output) = version_string("gh", &["extension", "list"]) {
-            if extension_output.contains("copilot") {
-                notes.push("GitHub Copilot extension detected".into());
-            } else {
-                notes.push("GitHub Copilot extension not listed by gh extension list".into());
-            }
-        }
+        let path = binary_in_path("copilot");
+        let version = version_string("copilot", &["--version"])
+            .or_else(|| version_string("copilot", &["version"]));
+        let notes = vec!["Copilot CLI detection is based on the copilot binary being available in PATH".into()];
         Ok(AgentDetection {
-            found: path.is_some() && version.is_some(),
+            found: path.is_some(),
             version,
             path,
             notes,
@@ -32,15 +26,10 @@ impl AgentAdapter for CopilotAdapter {
 
     fn launch_command(&self, _workspace_dir: &Path) -> anyhow::Result<CommandSpec> {
         Ok(CommandSpec {
-            program: "gh".into(),
-            args: vec![
-                "copilot".into(),
-                "suggest".into(),
-                "-t".into(),
-                "shell".into(),
-                "agent-ledger session started".into(),
-            ],
+            program: "copilot".into(),
+            args: Vec::new(),
             env: HashMap::new(),
+            interactive: true,
         })
     }
 

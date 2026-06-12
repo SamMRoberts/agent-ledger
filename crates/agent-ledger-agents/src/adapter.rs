@@ -13,6 +13,9 @@ pub struct CommandSpec {
     pub program: String,
     pub args: Vec<String>,
     pub env: HashMap<String, String>,
+    /// When true, stdin/stdout/stderr are inherited from the parent process
+    /// so the user can interact with the agent directly in their terminal.
+    pub interactive: bool,
 }
 
 #[derive(Debug, Clone)]
