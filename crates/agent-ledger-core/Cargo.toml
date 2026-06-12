@@ -1,0 +1,22 @@
+[package]
+name = "agent-ledger-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+blake3.workspace = true
+ed25519-dalek.workspace = true
+rand.workspace = true
+rusqlite.workspace = true
+hex.workspace = true
+walkdir.workspace = true
+tar.workspace = true
+flate2.workspace = true
