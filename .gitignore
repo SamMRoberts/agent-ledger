@@ -22,3 +22,7 @@ target
 
 # agent-ledger
 .ledger/
+
+# vibe-sentinel
+.agent/
+
