@@ -12,10 +12,15 @@ use flate2::{write::GzEncoder, Compression};
 use serde_json::json;
 use tar::Builder;
 
-use super::{active_or_latest_session_dir, capture_git_diff, event_log_path, load_events, read_session_manifest, session_db_path, session_key_path, session_manifest_path, write_session_manifest};
+use super::{
+    active_or_latest_session_dir, capture_git_diff, event_log_path, load_events,
+    read_session_manifest, session_db_path, session_key_path, session_manifest_path,
+    write_session_manifest,
+};
 
 pub async fn run() -> anyhow::Result<()> {
-    let session_dir = active_or_latest_session_dir()?.ok_or_else(|| anyhow::anyhow!("no sessions found"))?;
+    let session_dir =
+        active_or_latest_session_dir()?.ok_or_else(|| anyhow::anyhow!("no sessions found"))?;
     let manifest_path = session_manifest_path(&session_dir);
     let mut session_manifest = read_session_manifest(&manifest_path)?;
     let workspace_dir = env::current_dir()?;
@@ -39,7 +44,10 @@ pub async fn run() -> anyhow::Result<()> {
         fs::write(&diff_path, diff_contents)?;
     }
 
-    let mut event_log = EventLog::new(&event_log_path(&session_dir), session_manifest.session.id.clone())?;
+    let mut event_log = EventLog::new(
+        &event_log_path(&session_dir),
+        session_manifest.session.id.clone(),
+    )?;
     event_log.append(
         EventType::SubmissionCreated,
         json!({
@@ -56,11 +64,18 @@ pub async fn run() -> anyhow::Result<()> {
     }
 
     let events = load_events(&event_log_path(&session_dir))?;
-    let events_hash = events.last().map(|event| event.event_hash.clone()).unwrap_or_else(|| "genesis".into());
+    let events_hash = events
+        .last()
+        .map(|event| event.event_hash.clone())
+        .unwrap_or_else(|| "genesis".into());
     let signing_input = format!(
         "{}{}{}",
         session_manifest.session.id,
-        session_manifest.session.final_workspace_hash.clone().unwrap_or_default(),
+        session_manifest
+            .session
+            .final_workspace_hash
+            .clone()
+            .unwrap_or_default(),
         events_hash
     );
     let digest = blake3::hash(signing_input.as_bytes());

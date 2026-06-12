@@ -12,6 +12,9 @@ pub async fn run() -> anyhow::Result<()> {
     fs::create_dir_all(sessions_dir())?;
     let manifest = ChallengeManifest::default_manifest();
     fs::write("ledger.yaml", serde_yaml::to_string(&manifest)?)?;
-    println!("Initialized agent-ledger in {}", super::ledger_dir().display());
+    println!(
+        "Initialized agent-ledger in {}",
+        super::ledger_dir().display()
+    );
     Ok(())
 }

@@ -1,4 +1,8 @@
-use std::{collections::HashMap, env, path::{Path, PathBuf}};
+use std::{
+    collections::HashMap,
+    env,
+    path::{Path, PathBuf},
+};
 
 #[derive(Debug, Clone)]
 pub struct AgentDetection {
@@ -40,7 +44,10 @@ pub(crate) fn binary_in_path(name: &str) -> Option<PathBuf> {
 }
 
 pub(crate) fn version_string(program: &str, args: &[&str]) -> Option<String> {
-    let output = std::process::Command::new(program).args(args).output().ok()?;
+    let output = std::process::Command::new(program)
+        .args(args)
+        .output()
+        .ok()?;
     if !output.status.success() {
         return None;
     }

@@ -43,9 +43,7 @@ pub fn compute_workspace_hash(dir: &Path) -> anyhow::Result<WorkspaceHash> {
         let path = entry.path();
         let contents = fs::read(path).with_context(|| format!("reading {}", path.display()))?;
         let metadata = entry.metadata()?;
-        let modified_at = metadata
-            .modified()
-            .unwrap_or(SystemTime::UNIX_EPOCH);
+        let modified_at = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
         let relative_path = path
             .strip_prefix(dir)
             .unwrap_or(path)
@@ -159,7 +157,10 @@ mod tests {
         let hash_b = compute_workspace_hash(&dir).expect("hash b");
 
         assert_eq!(hash_a.total_hash, hash_b.total_hash);
-        assert!(hash_a.entries.iter().all(|entry| !entry.path.starts_with("node_modules/")));
+        assert!(hash_a
+            .entries
+            .iter()
+            .all(|entry| !entry.path.starts_with("node_modules/")));
 
         fs::remove_dir_all(dir).expect("cleanup dir");
     }

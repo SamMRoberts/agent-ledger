@@ -29,7 +29,8 @@ pub fn calculate_score(record: &ScoreRecord, manifest: &ChallengeManifest) -> f6
     let normalized_efficiency = if record.efficiency_score > 0.0 {
         (record.efficiency_score / 100.0).clamp(0.0, 1.0)
     } else {
-        let token_load = (record.reported_tokens_total + record.estimated_tokens_total) as f64 / 10_000.0;
+        let token_load =
+            (record.reported_tokens_total + record.estimated_tokens_total) as f64 / 10_000.0;
         let tool_load = record.tool_calls_total as f64 / 100.0;
         let shell_load = record.shell_commands_total as f64 / 100.0;
         let time_load = record.elapsed_active_time_seconds as f64 / 3_600.0;

@@ -1,7 +1,7 @@
 pub mod doctor;
 pub mod init;
-pub mod start;
 pub mod snapshot;
+pub mod start;
 pub mod status;
 pub mod submit;
 pub mod verify;
@@ -14,16 +14,11 @@ use agent_ledger_core::{
     manifest::ChallengeManifest,
     status::{
         active_or_latest_session_dir as core_active_or_latest_session_dir,
-        event_log_path as         core_event_log_path,
-        ledger_dir as core_ledger_dir,
-        load_events as core_load_events,
-        read_session_manifest as core_read_session_manifest,
-        session_db_path as core_session_db_path,
-        session_key_path as core_session_key_path,
-        session_manifest_path as core_session_manifest_path,
-        sessions_dir as core_sessions_dir,
-        write_session_manifest as core_write_session_manifest,
-        EvidenceCapture,
+        event_log_path as core_event_log_path, ledger_dir as core_ledger_dir,
+        load_events as core_load_events, read_session_manifest as core_read_session_manifest,
+        session_db_path as core_session_db_path, session_key_path as core_session_key_path,
+        session_manifest_path as core_session_manifest_path, sessions_dir as core_sessions_dir,
+        write_session_manifest as core_write_session_manifest, EvidenceCapture,
         SessionManifestFile,
     },
 };
@@ -70,7 +65,7 @@ pub(crate) fn evidence_capture_from_command_spec(spec: &CommandSpec) -> Evidence
         EvidenceCapture {
             terminal_io: "interactive_pty_transcript".into(),
             notes: vec![
-                "The agent inherited terminal interaction through a PTY transcript capture path. agent-ledger records lifecycle and snapshots, and stores replayed stdout transcript lines when capture is available.".into(),
+                "The agent inherited terminal interaction through a PTY transcript capture path. agent-ledger records lifecycle and snapshots, tails transcript stdout when capture is available, and derives live usage reports from visible agent output.".into(),
             ],
         }
     } else {

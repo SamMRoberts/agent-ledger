@@ -4,7 +4,8 @@ use thiserror::Error;
 use crate::event::{Event, EventType};
 
 pub fn compute_payload_hash(payload: &Value) -> String {
-    let bytes = serde_json::to_vec(payload).expect("serializing JSON value for hashing should not fail");
+    let bytes =
+        serde_json::to_vec(payload).expect("serializing JSON value for hashing should not fail");
     hex::encode(blake3::hash(&bytes).as_bytes())
 }
 

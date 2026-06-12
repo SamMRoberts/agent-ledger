@@ -4,7 +4,10 @@ use tracing_subscriber::EnvFilter;
 mod commands;
 
 #[derive(Parser)]
-#[command(name = "agent-ledger", about = "Tamper-evident coding challenge session runner")]
+#[command(
+    name = "agent-ledger",
+    about = "Tamper-evident coding challenge session runner"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -14,17 +17,24 @@ struct Cli {
 enum Commands {
     Doctor,
     Init,
-    Start { #[arg(long)] agent: String },
+    Start {
+        #[arg(long)]
+        agent: String,
+    },
     Snapshot,
     Status,
     Submit,
-    Verify { bundle_path: std::path::PathBuf },
+    Verify {
+        bundle_path: std::path::PathBuf,
+    },
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
         .with_target(false)
         .init();
 

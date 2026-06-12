@@ -1,7 +1,7 @@
 pub mod adapter;
-pub mod copilot;
-pub mod codex;
 pub mod claude;
+pub mod codex;
+pub mod copilot;
 
 pub use adapter::{AgentAdapter, AgentDetection, AgentParsedEvent, CommandSpec};
 

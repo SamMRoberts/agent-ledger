@@ -36,11 +36,13 @@ pub async fn run(bundle_path: std::path::PathBuf) -> anyhow::Result<()> {
         files.insert(path, contents);
     }
 
-    let manifest: SessionManifestFile = serde_json::from_slice(required_file(&files, "session_manifest.json")?)?;
+    let manifest: SessionManifestFile =
+        serde_json::from_slice(required_file(&files, "session_manifest.json")?)?;
     let events = load_events_from_bytes(required_file(&files, "events.jsonl")?)?;
     verify_chain(&events)?;
 
-    let workspace_hash: WorkspaceHash = serde_json::from_slice(required_file(&files, "workspace_hash.json")?)?;
+    let workspace_hash: WorkspaceHash =
+        serde_json::from_slice(required_file(&files, "workspace_hash.json")?)?;
     let expected_workspace_hash = manifest
         .session
         .final_workspace_hash
@@ -50,8 +52,14 @@ pub async fn run(bundle_path: std::path::PathBuf) -> anyhow::Result<()> {
         anyhow::bail!("workspace hash mismatch")
     }
 
-    let events_hash = events.last().map(|event| event.event_hash.clone()).unwrap_or_else(|| "genesis".into());
-    let signing_input = format!("{}{}{}", manifest.session.id, workspace_hash.total_hash, events_hash);
+    let events_hash = events
+        .last()
+        .map(|event| event.event_hash.clone())
+        .unwrap_or_else(|| "genesis".into());
+    let signing_input = format!(
+        "{}{}{}",
+        manifest.session.id, workspace_hash.total_hash, events_hash
+    );
     let digest = blake3::hash(signing_input.as_bytes());
 
     let public_key_bytes: [u8; 32] = hex::decode(manifest.public_key_hex.trim())?
@@ -59,7 +67,8 @@ pub async fn run(bundle_path: std::path::PathBuf) -> anyhow::Result<()> {
         .map_err(|_| anyhow!("invalid public key length"))?;
     let public_key = VerifyingKey::from_bytes(&public_key_bytes)?;
 
-    let signature_bytes = hex::decode(std::str::from_utf8(required_file(&files, "signature.ed25519")?)?.trim())?;
+    let signature_bytes =
+        hex::decode(std::str::from_utf8(required_file(&files, "signature.ed25519")?)?.trim())?;
     verify_signature(&public_key, digest.as_bytes(), &signature_bytes)?;
 
     println!("Bundle verification passed for {}", manifest.session.id);

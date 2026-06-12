@@ -24,14 +24,14 @@ It wraps a coding agent CLI session and produces a **signed, tamper-evident evid
 | What happened **inside** the session | ⚠️ Partial for interactive sessions |
 | What files changed during the session | ✅ |
 | What commands ran inside the agent | ⚠️ Depends on launch mode |
-| What the agent printed | ⚠️ Captured for non-interactive launches only |
+| What the agent printed | ⚠️ Captured for non-interactive launches and best-effort interactive transcript tailing |
 | What token reports were captured | ✅ |
 | Whether the final workspace matches the recorded session hash | ✅ |
 | That **no work occurred outside** the wrapper | ❌ (requires controlled environment) |
 
 > **Integrity limit**: `agent-ledger` v0.1 operates at **Level 1 (Local Evidence)**. It cannot prove exclusivity unless run inside a controlled environment (Docker/devcontainer). Remote-hosted challenge environments (Level 2/3) are planned for future releases.
 >
-> **Capture limit**: interactive agents that inherit the user's terminal currently record lifecycle and snapshot evidence, but not per-line stdin/stdout/stderr. Non-interactive agents capture stdout/stderr line-by-line.
+> **Capture limit**: interactive agents use a PTY transcript path where available. `agent-ledger` tails visible stdout for live evidence and usage reports, but stdin is not replayable and terminal control sequences may reduce transcript fidelity. Non-interactive agents capture stdout/stderr line-by-line.
 
 ---
 
@@ -155,21 +155,21 @@ This command:
 4. Captures the baseline workspace hash and git commit
 5. Writes a `session_started` event to the event log
 6. Launches the agent CLI and records its capture mode in the session manifest
-7. Records stdout/stderr line events only for non-interactive launches; interactive launches inherit the terminal and record reduced capture guarantees explicitly
+7. Records stdout/stderr line events for non-interactive launches; interactive launches inherit the terminal through a PTY transcript path and record best-effort visible stdout lines
 8. On exit: captures final workspace hash, writes `session_finished` event
 
 **Capture modes**
 
 - Non-interactive agents: stdout/stderr are captured line-by-line in the event log.
-- Interactive agents: stdio is inherited from the terminal, so session lifecycle and snapshot evidence are recorded, but terminal I/O is not replayable from the bundle.
+- Interactive agents: stdio is inherited through a PTY transcript path, so session lifecycle, snapshots, and visible stdout transcript lines are recorded when capture is available. Copilot AI Credit usage is derived from visible `/usage`, statusline, or exit-summary output.
 
 ```mermaid
 flowchart TD
     A[agent-ledger start] --> B{Launch mode}
     B -->|Non-interactive| C[Capture stdout/stderr line-by-line]
-    B -->|Interactive| D[Inherit terminal stdio]
+    B -->|Interactive| D[Inherit terminal stdio via PTY transcript]
     C --> E[Record session events + snapshots]
-    D --> F[Record session lifecycle + snapshots + reduced capture note]
+    D --> F[Record session lifecycle + snapshots + visible stdout transcript]
 ```
 
 **Session directory layout:**
@@ -210,6 +210,16 @@ Events:    284
 Workspace: abc123...
 Chain:     valid
 ```
+
+For Copilot sessions, `status` also reports AI Credits when Copilot usage output has been observed during the session:
+
+```
+aic_used: 1.25
+aic_remaining: 48.75
+aic_limit: 50
+```
+
+Run `/usage` in Copilot, or enable Copilot usage/statusline output, to make AIC values visible to the ledger while the session is still active.
 
 ### `agent-ledger-menubar` (macOS only)
 

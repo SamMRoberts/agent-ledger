@@ -111,7 +111,11 @@ impl Storage {
         Ok(session)
     }
 
-    pub fn update_session_status(&self, id: &SessionId, status: SessionStatus) -> anyhow::Result<()> {
+    pub fn update_session_status(
+        &self,
+        id: &SessionId,
+        status: SessionStatus,
+    ) -> anyhow::Result<()> {
         let finished_at = match status {
             SessionStatus::Active => None,
             SessionStatus::Finished | SessionStatus::Failed => Some(Utc::now().to_rfc3339()),
@@ -135,6 +139,9 @@ where
     rusqlite::Error::FromSqlConversionFailure(
         0,
         rusqlite::types::Type::Text,
-        Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, err.to_string())),
+        Box::new(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            err.to_string(),
+        )),
     )
 }

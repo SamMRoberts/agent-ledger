@@ -38,13 +38,16 @@ pub struct SessionManifestFile {
     pub evidence_capture: EvidenceCapture,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct TokenTotals {
     pub reports: u64,
     pub reported_tokens_total: u64,
     pub input_tokens_total: u64,
     pub output_tokens_total: u64,
     pub cached_tokens_total: u64,
+    pub aic_used: Option<f64>,
+    pub aic_remaining: Option<f64>,
+    pub aic_limit: Option<f64>,
 }
 
 #[derive(Debug, Clone)]
@@ -125,7 +128,11 @@ pub fn active_or_latest_session_dir(root: &Path) -> Result<Option<PathBuf>> {
 pub fn latest_workspace_hash(events: &[Event]) -> Option<String> {
     events.iter().rev().find_map(|event| {
         if event.event_type == EventType::WorkspaceHashSnapshot {
-            event.payload.get("total_hash")?.as_str().map(ToOwned::to_owned)
+            event
+                .payload
+                .get("total_hash")?
+                .as_str()
+                .map(ToOwned::to_owned)
         } else {
             None
         }
@@ -145,26 +152,69 @@ pub fn token_totals(events: &[Event]) -> TokenTotals {
         }
 
         totals.reports += 1;
-        totals.reported_tokens_total += event
+        let is_cumulative = event
+            .payload
+            .get("report_kind")
+            .and_then(|value| value.as_str())
+            == Some("cumulative");
+        let reported_tokens = event
             .payload
             .get("reported_tokens_total")
-            .and_then(|value| value.as_u64())
-            .unwrap_or(0);
-        totals.input_tokens_total += event
+            .and_then(|value| value.as_u64());
+        let input_tokens = event
             .payload
             .get("input_tokens")
-            .and_then(|value| value.as_u64())
-            .unwrap_or(0);
-        totals.output_tokens_total += event
+            .and_then(|value| value.as_u64());
+        let output_tokens = event
             .payload
             .get("output_tokens")
-            .and_then(|value| value.as_u64())
-            .unwrap_or(0);
-        totals.cached_tokens_total += event
+            .and_then(|value| value.as_u64());
+        let cached_tokens = event
             .payload
             .get("cached_tokens")
-            .and_then(|value| value.as_u64())
-            .unwrap_or(0);
+            .and_then(|value| value.as_u64());
+
+        if is_cumulative {
+            if let Some(value) = reported_tokens {
+                totals.reported_tokens_total = value;
+            }
+            if let Some(value) = input_tokens {
+                totals.input_tokens_total = value;
+            }
+            if let Some(value) = output_tokens {
+                totals.output_tokens_total = value;
+            }
+            if let Some(value) = cached_tokens {
+                totals.cached_tokens_total = value;
+            }
+        } else {
+            totals.reported_tokens_total += reported_tokens.unwrap_or(0);
+            totals.input_tokens_total += input_tokens.unwrap_or(0);
+            totals.output_tokens_total += output_tokens.unwrap_or(0);
+            totals.cached_tokens_total += cached_tokens.unwrap_or(0);
+        }
+
+        if let Some(value) = event
+            .payload
+            .get("aic_used")
+            .and_then(|value| value.as_f64())
+        {
+            totals.aic_used = Some(value);
+        }
+        if let Some(value) = event
+            .payload
+            .get("aic_remaining")
+            .and_then(|value| value.as_f64())
+        {
+            totals.aic_remaining = Some(value);
+        }
+        if let Some(value) = event
+            .payload
+            .get("aic_limit")
+            .and_then(|value| value.as_f64())
+        {
+            totals.aic_limit = Some(value);
+        }
     }
 
     totals
@@ -181,7 +231,10 @@ pub fn load_status_snapshot(root: &Path) -> Result<Option<StatusSnapshot>> {
         .or_else(|| session_manifest.session.final_workspace_hash.clone())
         .or_else(|| session_manifest.session.baseline_workspace_hash.clone())
         .unwrap_or_else(|| "n/a".into());
-    let end = session_manifest.session.finished_at.unwrap_or_else(Utc::now);
+    let end = session_manifest
+        .session
+        .finished_at
+        .unwrap_or_else(Utc::now);
     let elapsed_seconds = (end - session_manifest.session.started_at).num_seconds();
 
     Ok(Some(StatusSnapshot {
@@ -244,10 +297,12 @@ mod tests {
                 id: SessionId::from(format!("session-{}", Uuid::new_v4())),
                 agent_name: "copilot".into(),
                 started_at,
-                finished_at: (status != SessionStatus::Active).then_some(started_at + Duration::minutes(3)),
+                finished_at: (status != SessionStatus::Active)
+                    .then_some(started_at + Duration::minutes(3)),
                 baseline_commit: None,
                 baseline_workspace_hash: Some("baseline-hash".into()),
-                final_workspace_hash: (status != SessionStatus::Active).then_some("final-hash".into()),
+                final_workspace_hash: (status != SessionStatus::Active)
+                    .then_some("final-hash".into()),
                 status,
             },
             challenge_manifest: ChallengeManifest::default_manifest(),
@@ -286,6 +341,43 @@ mod tests {
         assert_eq!(totals.input_tokens_total, 22);
         assert_eq!(totals.output_tokens_total, 21);
         assert_eq!(totals.cached_tokens_total, 7);
+        assert_eq!(totals.aic_used, None);
+    }
+
+    #[test]
+    fn token_totals_uses_latest_cumulative_aic_report() {
+        let events = vec![
+            make_event(
+                EventType::TokenReport,
+                json!({
+                    "source": "copilot_aic_usage",
+                    "report_kind": "cumulative",
+                    "aic_used": 1.0,
+                    "aic_remaining": 49.0,
+                    "aic_limit": 50.0,
+                    "reported_tokens_total": 100
+                }),
+            ),
+            make_event(
+                EventType::TokenReport,
+                json!({
+                    "source": "copilot_aic_usage",
+                    "report_kind": "cumulative",
+                    "aic_used": 1.5,
+                    "aic_remaining": 48.5,
+                    "aic_limit": 50.0,
+                    "reported_tokens_total": 125
+                }),
+            ),
+        ];
+
+        let totals = token_totals(&events);
+
+        assert_eq!(totals.reports, 2);
+        assert_eq!(totals.reported_tokens_total, 125);
+        assert_eq!(totals.aic_used, Some(1.5));
+        assert_eq!(totals.aic_remaining, Some(48.5));
+        assert_eq!(totals.aic_limit, Some(50.0));
     }
 
     #[test]

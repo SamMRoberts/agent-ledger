@@ -1,9 +1,6 @@
 use std::path::Path;
 
-use agent_ledger_core::{
-    session::SessionStatus,
-    status::StatusSnapshot,
-};
+use agent_ledger_core::{session::SessionStatus, status::StatusSnapshot};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IconState {
@@ -68,7 +65,11 @@ fn present_snapshot(snapshot: &StatusSnapshot) -> PresentedStatus {
     };
     let total_tokens = snapshot.tokens.reported_tokens_total;
     let short_hash = short_hash(&snapshot.latest_workspace_hash);
-    let chain_label = if snapshot.chain_valid { "valid" } else { "invalid" };
+    let chain_label = if snapshot.chain_valid {
+        "valid"
+    } else {
+        "invalid"
+    };
 
     PresentedStatus {
         title: format!("AL {status_label}"),

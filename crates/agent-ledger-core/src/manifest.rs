@@ -169,7 +169,8 @@ scoring:
   token_efficiency_weight: 20
 "#;
 
-        let manifest: ChallengeManifest = serde_yaml::from_str(yaml).expect("manifest should parse");
+        let manifest: ChallengeManifest =
+            serde_yaml::from_str(yaml).expect("manifest should parse");
         manifest.validate().expect("manifest should validate");
         assert_eq!(manifest.id, "todo-app-2026-06");
         assert_eq!(manifest.allowed_agents, vec!["copilot", "codex"]);

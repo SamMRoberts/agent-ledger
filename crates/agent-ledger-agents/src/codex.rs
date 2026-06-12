@@ -2,7 +2,9 @@ use std::{collections::HashMap, path::Path};
 
 use serde_json::json;
 
-use crate::adapter::{binary_in_path, version_string, AgentAdapter, AgentDetection, AgentParsedEvent, CommandSpec};
+use crate::adapter::{
+    binary_in_path, version_string, AgentAdapter, AgentDetection, AgentParsedEvent, CommandSpec,
+};
 
 pub struct CodexAdapter;
 
@@ -13,12 +15,15 @@ impl AgentAdapter for CodexAdapter {
 
     fn detect(&self) -> anyhow::Result<AgentDetection> {
         let path = binary_in_path("codex");
-        let version = version_string("codex", &["--version"]).or_else(|| version_string("codex", &["version"]));
+        let version = version_string("codex", &["--version"])
+            .or_else(|| version_string("codex", &["version"]));
         Ok(AgentDetection {
             found: path.is_some(),
             version,
             path,
-            notes: vec!["Codex detection is based on the codex binary being available in PATH".into()],
+            notes: vec![
+                "Codex detection is based on the codex binary being available in PATH".into(),
+            ],
         })
     }
 

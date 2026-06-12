@@ -9,7 +9,10 @@ mod presentation;
 mod macos;
 
 #[derive(Debug, Clone, Parser)]
-#[command(name = "agent-ledger-menubar", about = "macOS menubar status surface for agent-ledger")]
+#[command(
+    name = "agent-ledger-menubar",
+    about = "macOS menubar status surface for agent-ledger"
+)]
 struct Args {
     #[arg(long, default_value = ".")]
     root: PathBuf,

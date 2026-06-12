@@ -10,7 +10,9 @@ fn run_git(repo_dir: &Path, args: &[&str]) -> anyhow::Result<String> {
         .output()
         .with_context(|| format!("running git {:?} in {}", args, repo_dir.display()))?;
     if !output.status.success() {
-        return Err(anyhow!(String::from_utf8_lossy(&output.stderr).trim().to_string()));
+        return Err(anyhow!(String::from_utf8_lossy(&output.stderr)
+            .trim()
+            .to_string()));
     }
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
@@ -37,7 +39,9 @@ pub fn create_bundle(repo_dir: &Path, output_path: &Path) -> anyhow::Result<()> 
         .output()
         .with_context(|| format!("creating git bundle in {}", repo_dir.display()))?;
     if !output.status.success() {
-        return Err(anyhow!(String::from_utf8_lossy(&output.stderr).trim().to_string()));
+        return Err(anyhow!(String::from_utf8_lossy(&output.stderr)
+            .trim()
+            .to_string()));
     }
     Ok(())
 }
