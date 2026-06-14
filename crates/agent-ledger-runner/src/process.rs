@@ -1,12 +1,13 @@
 use std::{
     fs,
+    io::{self, Write},
     path::{Path, PathBuf},
     process::Stdio,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use agent_ledger_agents::CommandSpec;
@@ -16,6 +17,8 @@ use serde_json::json;
 use tokio::io::{AsyncBufReadExt, BufReader};
 
 pub type AgentLineHandler = Arc<dyn Fn(EventType, &str) -> anyhow::Result<()> + Send + Sync>;
+
+const INTERACTIVE_STATUS_INTERVAL: Duration = Duration::from_secs(10);
 
 pub struct ProcessRunner {
     session_id: String,
@@ -162,14 +165,20 @@ impl ProcessRunner {
     ) -> anyhow::Result<i32> {
         let transcript_path =
             std::env::temp_dir().join(format!("agent-ledger-{}-transcript.log", self.session_id));
+        let framed = spec.program == "copilot";
+
+        if framed {
+            Self::print_interactive_frame_start(&self.session_id)?;
+        }
 
         let mut command = tokio::process::Command::new("script");
         command
             .arg("-q")
-            .arg("-F")
+            .arg("-e")
+            .arg("-f")
+            .arg("-c")
+            .arg(Self::script_command(spec))
             .arg(&transcript_path)
-            .arg(&spec.program)
-            .args(&spec.args)
             .current_dir(workspace_dir)
             .stdin(Stdio::inherit())
             .stdout(Stdio::inherit())
@@ -200,10 +209,27 @@ impl ProcessRunner {
             })
         };
 
+        let status_done = Arc::new(AtomicBool::new(false));
+        let status_task = framed.then(|| {
+            let session_id = self.session_id.clone();
+            let status_done = Arc::clone(&status_done);
+            tokio::spawn(
+                async move { Self::refresh_interactive_status(session_id, status_done).await },
+            )
+        });
+
         let status = child.wait().await?;
+        status_done.store(true, Ordering::SeqCst);
+        if let Some(task) = status_task {
+            task.await??;
+        }
         tail_done.store(true, Ordering::SeqCst);
         tail_task.await??;
         let _ = fs::remove_file(&transcript_path);
+
+        if framed {
+            Self::print_interactive_frame_stop(status.code().unwrap_or_default())?;
+        }
 
         {
             let mut log = self
@@ -220,6 +246,126 @@ impl ProcessRunner {
         }
 
         Ok(status.code().unwrap_or_default())
+    }
+
+    fn script_command(spec: &CommandSpec) -> String {
+        std::iter::once(Self::shell_quote(&spec.program))
+            .chain(spec.args.iter().map(|arg| Self::shell_quote(arg)))
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    fn shell_quote(value: &str) -> String {
+        if value
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | '/' | ':' | '='))
+        {
+            return value.to_string();
+        }
+
+        format!("'{}'", value.replace('\'', "'\"'\"'"))
+    }
+
+    fn terminal_width() -> usize {
+        std::env::var("COLUMNS")
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or(80)
+            .clamp(40, 120)
+    }
+
+    fn frame_border(width: usize) -> String {
+        format!("+{}+", "-".repeat(width.saturating_sub(2)))
+    }
+
+    fn frame_line(width: usize, content: &str) -> String {
+        let inner_width = width.saturating_sub(4);
+        let mut text = content.to_string();
+        if text.len() > inner_width {
+            text.truncate(inner_width.saturating_sub(1));
+            text.push('…');
+        }
+        format!("| {text:inner_width$} |")
+    }
+
+    fn print_interactive_frame_start(session_id: &str) -> anyhow::Result<()> {
+        let width = Self::terminal_width();
+        let mut stderr = io::stderr().lock();
+        writeln!(stderr, "{}", Self::frame_border(width))?;
+        writeln!(
+            stderr,
+            "{}",
+            Self::frame_line(
+                width,
+                &format!("agent-ledger copilot session {session_id} is running")
+            )
+        )?;
+        writeln!(
+            stderr,
+            "{}",
+            Self::frame_line(
+                width,
+                "status is refreshed here while the Copilot CLI owns the terminal"
+            )
+        )?;
+        writeln!(stderr, "{}", Self::frame_border(width))?;
+        stderr.flush()?;
+        Ok(())
+    }
+
+    fn print_interactive_frame_stop(exit_code: i32) -> anyhow::Result<()> {
+        let width = Self::terminal_width();
+        let mut stderr = io::stderr().lock();
+        writeln!(stderr)?;
+        writeln!(
+            stderr,
+            "{}",
+            Self::frame_line(
+                width,
+                &format!("agent-ledger copilot session finished with exit code {exit_code}")
+            )
+        )?;
+        writeln!(stderr, "{}", Self::frame_border(width))?;
+        stderr.flush()?;
+        Ok(())
+    }
+
+    async fn refresh_interactive_status(
+        session_id: String,
+        done: Arc<AtomicBool>,
+    ) -> anyhow::Result<()> {
+        let started = Instant::now();
+        let mut next_status_at = INTERACTIVE_STATUS_INTERVAL;
+        loop {
+            if done.load(Ordering::SeqCst) {
+                break;
+            }
+
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            if done.load(Ordering::SeqCst) {
+                break;
+            }
+
+            let elapsed = started.elapsed();
+            if elapsed < next_status_at {
+                continue;
+            }
+            next_status_at += INTERACTIVE_STATUS_INTERVAL;
+
+            let width = Self::terminal_width();
+            let elapsed_seconds = elapsed.as_secs();
+            let status = Self::frame_line(
+                width,
+                &format!(
+                    "agent-ledger status: active | session: {session_id} | elapsed: {elapsed_seconds}s"
+                ),
+            );
+            let mut stderr = io::stderr().lock();
+            writeln!(stderr, "{status}")?;
+            stderr.flush()?;
+        }
+
+        Ok(())
     }
 
     async fn tail_transcript_until_done(
@@ -282,5 +428,34 @@ impl ProcessRunner {
         }
 
         Self::append_line_event(event_log, line_handler, EventType::AgentStdout, trimmed)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn script_command_quotes_arguments_for_shell() {
+        let spec = CommandSpec {
+            program: "copilot".into(),
+            args: vec!["ask".into(), "what's next?".into()],
+            env: Default::default(),
+            interactive: true,
+        };
+
+        assert_eq!(
+            ProcessRunner::script_command(&spec),
+            "copilot ask 'what'\"'\"'s next?'"
+        );
+    }
+
+    #[test]
+    fn frame_line_preserves_requested_width() {
+        let line = ProcessRunner::frame_line(40, "agent-ledger status");
+
+        assert_eq!(line.len(), 40);
+        assert!(line.starts_with("| "));
+        assert!(line.ends_with(" |"));
     }
 }
