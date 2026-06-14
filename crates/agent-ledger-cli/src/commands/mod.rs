@@ -1,5 +1,7 @@
 pub mod doctor;
 pub mod init;
+pub mod observe;
+pub mod session_lifecycle;
 pub mod snapshot;
 pub mod start;
 pub mod status;
@@ -11,7 +13,6 @@ use std::{path::Path, path::PathBuf};
 use agent_ledger_agents::CommandSpec;
 use agent_ledger_core::{
     event::Event,
-    manifest::ChallengeManifest,
     status::{
         active_or_latest_session_dir as core_active_or_latest_session_dir,
         event_log_path as core_event_log_path, ledger_dir as core_ledger_dir,
@@ -47,17 +48,6 @@ pub(crate) fn session_manifest_path(session_dir: &Path) -> PathBuf {
 
 pub(crate) fn session_key_path(session_dir: &Path) -> PathBuf {
     core_session_key_path(session_dir)
-}
-
-pub(crate) fn load_manifest_or_default() -> Result<ChallengeManifest> {
-    let path = PathBuf::from("ledger.yaml");
-    if path.exists() {
-        Ok(ChallengeManifest::load_from_file(&path)?)
-    } else {
-        let manifest = ChallengeManifest::default_manifest();
-        manifest.validate()?;
-        Ok(manifest)
-    }
 }
 
 pub(crate) fn evidence_capture_from_command_spec(spec: &CommandSpec) -> EvidenceCapture {

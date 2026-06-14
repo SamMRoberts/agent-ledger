@@ -1,5 +1,4 @@
 use std::{
-    env, fs,
     path::Path,
     sync::{Arc, Mutex},
 };
@@ -7,22 +6,14 @@ use std::{
 use agent_ledger_agents::{get_adapter, AgentAdapter, AgentParsedEvent};
 use agent_ledger_core::{
     event::{EventLog, EventType},
-    session::{Session, SessionConfig, SessionId, SessionStatus},
-    signing::SessionKey,
-    storage::Storage,
-    workspace::compute_workspace_hash,
+    session::SessionStatus,
 };
-use agent_ledger_runner::{
-    git,
-    process::{AgentLineHandler, ProcessRunner},
-};
-use chrono::Utc;
+use agent_ledger_runner::process::{AgentLineHandler, ProcessRunner};
 use serde_json::json;
 
 use super::{
-    capture_git_diff, event_log_path, evidence_capture_from_command_spec, ledger_dir,
-    load_manifest_or_default, session_db_path, session_key_path, session_manifest_path,
-    sessions_dir, write_session_manifest, SessionManifestFile,
+    evidence_capture_from_command_spec,
+    session_lifecycle::{capture_session_snapshot, create_session, finish_session},
 };
 
 fn parsed_event_type(parsed: &AgentParsedEvent) -> Option<EventType> {
@@ -57,15 +48,6 @@ fn append_parsed_agent_line_events(
 }
 
 pub async fn run(agent: String) -> anyhow::Result<()> {
-    let manifest = load_manifest_or_default()?;
-    if !manifest
-        .allowed_agents
-        .iter()
-        .any(|allowed| allowed == &agent)
-    {
-        anyhow::bail!("agent '{agent}' is not allowed by ledger.yaml")
-    }
-
     let adapter: Arc<dyn AgentAdapter> = Arc::from(
         get_adapter(&agent).ok_or_else(|| anyhow::anyhow!("unsupported agent: {agent}"))?,
     );
@@ -76,68 +58,8 @@ pub async fn run(agent: String) -> anyhow::Result<()> {
     let spec = adapter.launch_command(Path::new("."))?;
     let evidence_capture = evidence_capture_from_command_spec(&spec);
 
-    let session_id = SessionId::new();
-    let session_dir = sessions_dir().join(&session_id.0);
-    fs::create_dir_all(session_dir.join("workspace.snapshots"))?;
-    fs::create_dir_all(session_dir.join("diffs"))?;
-    fs::create_dir_all(session_dir.join("test-results"))?;
-    fs::create_dir_all(session_dir.join("final"))?;
-
-    let storage = Storage::open(&session_db_path(&session_dir))?;
-    let key = SessionKey::generate();
-    let workspace_dir = env::current_dir()?;
-    let baseline_workspace_hash = compute_workspace_hash(&workspace_dir)?;
-    let baseline_commit = if git::is_git_repo(&workspace_dir) {
-        Some(git::get_current_commit(&workspace_dir)?)
-    } else {
-        None
-    };
-
-    let mut session = Session::new(&SessionConfig {
-        session_id: session_id.clone(),
-        agent_name: agent.clone(),
-        workspace_dir: workspace_dir.clone(),
-        ledger_dir: ledger_dir(),
-        manifest: manifest.clone(),
-    });
-    session.baseline_commit = baseline_commit.clone();
-    session.baseline_workspace_hash = Some(baseline_workspace_hash.total_hash.clone());
-    storage.save_session(&session)?;
-
-    let session_manifest_file = SessionManifestFile {
-        session: session.clone(),
-        challenge_manifest: manifest.clone(),
-        public_key_hex: key.public_key_hex(),
-        evidence_capture: evidence_capture.clone(),
-    };
-    write_session_manifest(&session_manifest_path(&session_dir), &session_manifest_file)?;
-    key.save_to_file(&session_key_path(&session_dir))?;
-
-    let mut event_log = EventLog::new(&event_log_path(&session_dir), session_id.clone())?;
-    event_log.append(
-        EventType::SessionStarted,
-        json!({
-            "session_id": session_id.0,
-            "agent": agent,
-            "manifest_id": manifest.id,
-            "baseline_commit": baseline_commit,
-            "terminal_io_capture": evidence_capture.terminal_io,
-            "capture_notes": evidence_capture.notes,
-        }),
-    )?;
-    event_log.append(
-        EventType::WorkspaceHashSnapshot,
-        serde_json::to_value(&baseline_workspace_hash)?,
-    )?;
-    let baseline_diff = capture_git_diff(&workspace_dir);
-    if let Some(payload) = baseline_diff.warning_payload("start") {
-        event_log.append(EventType::Warning, payload)?;
-    }
-    if baseline_diff.file_contents().is_some() {
-        event_log.append(EventType::GitDiffSnapshot, baseline_diff.event_payload())?;
-    }
-
-    let event_log = Arc::new(Mutex::new(event_log));
+    let context = create_session(agent, evidence_capture)?;
+    let event_log = Arc::clone(&context.event_log);
     let line_handler: AgentLineHandler = {
         let adapter = Arc::clone(&adapter);
         let event_log = Arc::clone(&event_log);
@@ -145,53 +67,22 @@ pub async fn run(agent: String) -> anyhow::Result<()> {
             append_parsed_agent_line_events(adapter.as_ref(), line, &event_log)
         })
     };
-    let runner = ProcessRunner::new(session.id.to_string(), Arc::clone(&event_log))
+    let runner = ProcessRunner::new(context.session.id.to_string(), Arc::clone(&event_log))
         .with_line_handler(line_handler);
-    let exit_code = runner.run_agent(&spec, &workspace_dir).await?;
+    let exit_code = runner.run_agent(&spec, &context.workspace_dir).await?;
 
-    let final_workspace_hash = compute_workspace_hash(&workspace_dir)?;
-    {
-        let mut log = event_log
-            .lock()
-            .map_err(|_| anyhow::anyhow!("event log mutex poisoned"))?;
-        log.append(
-            EventType::WorkspaceHashSnapshot,
-            serde_json::to_value(&final_workspace_hash)?,
-        )?;
-    }
-
-    session.final_workspace_hash = Some(final_workspace_hash.total_hash.clone());
-    session.finished_at = Some(Utc::now());
-    session.status = if exit_code == 0 {
+    let final_workspace_hash = capture_session_snapshot(&context, "finish")?;
+    let final_status = if exit_code == 0 {
         SessionStatus::Finished
     } else {
         SessionStatus::Failed
     };
-    storage.save_session(&session)?;
-    storage.update_session_status(&session.id, session.status.clone())?;
-
-    {
-        let mut log = event_log
-            .lock()
-            .map_err(|_| anyhow::anyhow!("event log mutex poisoned"))?;
-        log.append(
-            EventType::SessionFinished,
-            json!({
-                "exit_code": exit_code,
-                "status": session.status.to_string(),
-                "final_workspace_hash": session.final_workspace_hash,
-            }),
-        )?;
-    }
-
-    write_session_manifest(
-        &session_manifest_path(&session_dir),
-        &SessionManifestFile {
-            session,
-            challenge_manifest: manifest,
-            public_key_hex: key.public_key_hex(),
-            evidence_capture,
-        },
+    let session_id = context.session.id.clone();
+    finish_session(
+        context,
+        final_status,
+        final_workspace_hash.total_hash,
+        json!({ "exit_code": exit_code }),
     )?;
 
     println!("Completed session {}", session_id);

@@ -69,6 +69,9 @@ agent-ledger start --agent copilot
 # Start a session with Codex CLI  
 agent-ledger start --agent codex
 
+# Or observe a session while you use an agent normally elsewhere
+agent-ledger observe --agent copilot
+
 # During a session: take a manual snapshot
 agent-ledger snapshot
 
@@ -186,6 +189,43 @@ flowchart TD
       diffs/
       test-results/
       final/
+```
+
+### `agent-ledger observe --agent <agent>`
+
+Starts a new observer-mode session without launching the agent process.
+
+```
+$ agent-ledger observe --agent copilot
+```
+
+Use this mode when you want to run an agent normally in another surface, such as VS Code Copilot Chat, Copilot CLI, Codex, or Claude, while `agent-ledger` records workspace evidence in the background.
+
+This command:
+1. Creates the same session directory layout as `start`
+2. Captures the baseline workspace hash and git diff
+3. Watches the workspace for file create, modify, delete, and rename events
+4. Ignores internal/generated paths such as `.ledger`, `.git`, `target`, `node_modules`, `dist`, and `build`
+5. Records periodic workspace hash and git diff snapshots
+6. On Ctrl-C or `--duration-seconds`: captures a final snapshot and writes `session_finished`
+
+Flags:
+
+- `--snapshot-interval-seconds <n>`: periodic snapshot interval in seconds (defaults to `300`)
+- `--duration-seconds <n>`: finish automatically after the duration instead of waiting only for Ctrl-C
+
+**Capture mode**
+
+Observer mode records lifecycle, workspace file events, workspace hashes, and git diffs. It does not launch the agent and does not capture full terminal stdin/stdout. Token reports and richer agent activity require visible wrapper output or future explicit collectors/ingestion.
+
+```mermaid
+flowchart TD
+  A[agent-ledger observe] --> B[Create ledger session]
+  B --> C[User runs agent normally]
+  C --> D[Watch workspace file events]
+  D --> E[Record periodic snapshots]
+  E --> F[Ctrl-C or duration]
+  F --> G[Finalize session]
 ```
 
 ### `agent-ledger snapshot`

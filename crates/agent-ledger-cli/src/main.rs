@@ -21,6 +21,14 @@ enum Commands {
         #[arg(long)]
         agent: String,
     },
+    Observe {
+        #[arg(long)]
+        agent: String,
+        #[arg(long, default_value_t = 300)]
+        snapshot_interval_seconds: u64,
+        #[arg(long)]
+        duration_seconds: Option<u64>,
+    },
     Snapshot,
     Status,
     Submit,
@@ -43,6 +51,11 @@ async fn main() -> anyhow::Result<()> {
         Commands::Doctor => commands::doctor::run().await?,
         Commands::Init => commands::init::run().await?,
         Commands::Start { agent } => commands::start::run(agent).await?,
+        Commands::Observe {
+            agent,
+            snapshot_interval_seconds,
+            duration_seconds,
+        } => commands::observe::run(agent, snapshot_interval_seconds, duration_seconds).await?,
         Commands::Snapshot => commands::snapshot::run().await?,
         Commands::Status => commands::status::run().await?,
         Commands::Submit => commands::submit::run().await?,
